@@ -22,11 +22,11 @@ function vuln_pdo_print_file_log($pdo) {
     ;
   ';
   foreach ($pdo->query($sql) as $row) {
-      print $row['id'] . "\t";
-      print $row['path'] . "\t";
-      print $row['detected_on'] . "\t";
-      print $row['status'] . "\t";
-      print $row['digest'] . "\n";
+      echo $row['id'], "\t";
+      echo $row['path'], "\t";
+      echo $row['detected_on'], "\t";
+      echo $row['status'], "\t";
+      echo $row['digest'], "\n";
   }
 }
 
@@ -94,6 +94,28 @@ function vuln_pdo_table_exists($pdo, $table) {
   }
 }
 
+function vuln_find($dir) {
+  $result = array();
+  $current_dir = scandir($dir);
+  foreach ($current_dir as $file) {
+    $path = $dir . DIRECTORY_SEPARATOR . $file;
+    $result[] = $path;
+    $is_ref = in_array($file, array(".",".."));
+    $is_dir = is_dir($path);
+    if (!$is_ref && $is_dir) {
+      $sub_dir = vuln_find($path);
+      $result = array_merge($result, $sub_dir);
+    }
+  }
+  return $result;
+}
+
+function print_array($arr) {
+  foreach ($arr as $val) {
+    echo $val, "\n";
+  }
+}
+
 function vuln_admin_init() {
   $dsn = 'mysql:host=localhost;dbname=igl711-a15_02095';
   $username = 'igl711-a15.02095';
@@ -111,7 +133,12 @@ function vuln_admin_init() {
   if (!vuln_table_exists) {
     vuln_pdo_create_tables($pdo);
   }
-  vuln_pdo_print_file_log($pdo);  
+  echo "<pre>";
+  vuln_pdo_print_file_log($pdo);
+
+  $wp_file_list = vuln_find(ABSPATH);
+  print_array($wp_file_list);
+  echo "</pre>";
 }
 ?>
 
