@@ -11,7 +11,7 @@ function vuln_admin_setup_menu() {
   add_menu_page('Vuln debug', 'Vuln', 'manage_options', 'vuln-plugin', 'vuln_admin_init');
 }
 
-function vuln_pdo_print_files($pdo) {
+function vuln_pdo_print_file_log($pdo) {
   $sql = '
     SELECT 
       vuln_file_log.id AS id, path, detected_on,
@@ -85,6 +85,15 @@ function vuln_pdo_create_tables($pdo) {
   }
 }
 
+function vuln_pdo_table_exists($pdo, $table) {
+  try {
+    $result = $pdo->query("SELECT 1 FROM $table LIMIT 1");
+    return true;
+  } catch (PDOException $e) {
+    return false;
+  }
+}
+
 function vuln_admin_init() {
   $dsn = 'mysql:host=localhost;dbname=igl711-a15_02095';
   $username = 'igl711-a15.02095';
@@ -98,8 +107,11 @@ function vuln_admin_init() {
   } catch(PDOException $e) {
     echo $e->getMessage();//Remove or change message in production code
   }
-  vuln_pdo_create_tables($pdo);
-  
+  $vuln_table_exists = vuln_pdo_table_exists($pdo, 'vuln_status');
+  if (!vuln_table_exists) {
+    vuln_pdo_create_tables($pdo);
+  }
+  vuln_pdo_print_file_log($pdo);  
 }
 ?>
 
