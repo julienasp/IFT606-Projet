@@ -31,12 +31,45 @@ function vuln_pdo_print_file_log($pdo) {
       INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
     ;
   ';
-  foreach ($pdo->query($sql) as $row) {
+  try {
+    echo "id\tdetected_on\tdigest\tpath\tstatus\n";
+    foreach ($pdo->query($sql) as $row) {
       echo $row['id'], "\t";
       echo $row['detected_on'], "\t";
       echo $row['digest'], "\t";
       echo $row['path'], "\t";
       echo $row['status'], "\n";
+    }
+  } catch(PDOException $e) {
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
+  }
+}
+
+function vuln_pdo_print_file_event($pdo) {
+  $sql = '
+    SELECT 
+      vuln_file_log.id AS id, path, detected_on, what,
+      HEX(vuln_digest_status.digest) AS digest, vuln_status.status AS `status` 
+    FROM vuln_file_event
+      INNER JOIN vuln_file_log ON vuln_file_event.file_log_id = vuln_file_log.id 
+      INNER JOIN vuln_digest_status ON vuln_file_log.digest_id = vuln_digest_status.id
+      INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
+    ;
+  ';
+  try {
+    echo "id\tdetected_on\tdigest\tpath\twhat\tstatus\n";
+    foreach ($pdo->query($sql) as $row) {
+      echo $row['id'], "\t";
+      echo $row['detected_on'], "\t";
+      echo $row['digest'], "\t";
+      echo $row['path'], "\t";
+      echo $row['what'], "\t";
+      echo $row['status'], "\n";
+    }
+  } catch(PDOException $e) {
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
   }
 }
 
@@ -74,9 +107,11 @@ function vuln_pdo_create_tables($pdo) {
     CREATE TABLE `vuln_file_log` (
       `id` int unsigned not null auto_increment,
       `path` VARCHAR(4096) not null,
-      `detected_on` TIMESTAMP not null,
+      `path_digest` binary(16) unique,
+      `detected_on` timestamp not null,
       `digest_id` int unsigned not null,
       primary key (`id`),
+      index `vuln_file_log_idx_path_digest` (`path_digest`),
       index `vuln_file_log_idx_digest_id` (`digest_id`),
       foreign key (`digest_id`)
         references `vuln_digest_status` (`id`)
@@ -93,6 +128,17 @@ function vuln_pdo_create_tables($pdo) {
       `cron_on` TIMESTAMP not null,
       primary key (`id`)
     );
+    CREATE TABLE `vuln_file_event` (
+      `id` int unsigned not null auto_increment,
+      `what` varchar(4096) not null,
+      `file_log_id` int unsigned not null,
+      primary key (`id`),
+      index `vuln_file_log_idx_file_log_id` (`file_log_id`),
+      foreign key (`file_log_id`)
+        references `vuln_file_log` (`id`)
+        on delete cascade
+        on update cascade
+    );
   " ;
   try {
     $pdo->exec($sql);
@@ -104,8 +150,8 @@ function vuln_pdo_create_tables($pdo) {
 
 function vuln_pdo_table_exists($pdo, $table) {
   try {
-    $stmt = $pdo->prepare("SELECT 1 FROM :table LIMIT 1");
-    $stmt->bindParam(':table', $table);
+    // can't bind table!
+    $stmt = $pdo->prepare("SELECT 1 FROM $table LIMIT 1");
     $stmt->execute();
     return true;
   } catch (PDOException $e) {
@@ -115,25 +161,31 @@ function vuln_pdo_table_exists($pdo, $table) {
 
 function vuln_pdo_drop_table($pdo, $table) {
   try {
-    $stmt = $pdo->prepare("DROP TABLE :table IF EXISTS");
-    $stmt->bindParam(':table', $table);
+    // can't bind a table name!
+    $stmt = $pdo->prepare("DROP TABLE IF EXISTS $table");
     $stmt->execute();
-    return true;
   } catch (PDOException $e) {
-    return false;
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
   }
 }
 
 function vuln_pdo_reset($pdo) {
   try {
+    $stmt = $pdo->prepare("SET foreign_key_checks = 0");
+    $stmt->execute();
+
     $query = $pdo->query("SHOW TABLES");
     $tables = $query->fetchAll(PDO::FETCH_COLUMN);
     foreach ($tables as $table) {
-      $prefix = substr($string_n, 0, 5);
+      $prefix = substr($table, 0, 5);
       if ($prefix === "vuln_") {
-        vuln_pdo_drop_table($pdo);
+        vuln_pdo_drop_table($pdo, $table);
       }
     }
+
+    $stmt = $pdo->prepare("SET foreign_key_checks = 1");
+    $stmt->execute();
   } catch(PDOException $e) {
     echo $e->getMessage();
     echo $e->getTraceAsString();
@@ -165,16 +217,28 @@ function print_array($arr) {
 function vuln_pdo_log_file($pdo, $file_name) {
   try {
     $file_digest = md5_file($file_name, true);
+    $path_digest = md5($file_name, true);
     $stmt = $pdo->prepare("INSERT INTO `vuln_digest_status` (`digest`, `status_id`) VALUES (:digest, 3) ON DUPLICATE KEY UPDATE digest=digest");
     $stmt->bindParam(':digest', $file_digest);
     $stmt->execute();
     $digest_id = $pdo->lastInsertId('id');
     
-    $stmt = $pdo->prepare("INSERT INTO `vuln_file_log` (`path`, `detected_on`, `digest_id`) VALUES (:path, now(), :digest_id)");
-    $stmt->bindParam(':path', $file_name);
-    $stmt->bindParam(':digest_id', $digest_id);
+    $stmt = $pdo->prepare("SELECT `id`, `digest` FROM `vuln_file_log` WHERE `path_digest` = :path_digest");
+    $stmt->bindParam(':path_digest', $path_digest);
     $stmt->execute();
-
+    $path_digest_exists = $stmt->fetch();
+    if ($path_digest_exists && $path_digest_exists['digest'] !== $file_digest) {
+      $stmt = $pdo->prepare("INSERT INTO `vuln_file_event` (`what`, `file_log_id`) VALUES (:what, :file_digest_id)");
+      $stmt->bindParam(':what', 'file changed between patrols');
+      $stmt->bindParam(':file_log_id', $path_digest_exists['id']);
+      $stmt->execute();
+    } else {
+      $stmt = $pdo->prepare("INSERT INTO `vuln_file_log` (`path`, `path_digest`, `detected_on`, `digest_id`) VALUES (:path, :path_digest, now(), :digest_id)");
+      $stmt->bindParam(':path', $file_name);
+      $stmt->bindParam(':path_digest', $path_digest);
+      $stmt->bindParam(':digest_id', $digest_id);
+      $stmt->execute();
+    }
     return true;
   } catch (PDOException $e) {
     return false;
@@ -201,7 +265,7 @@ function vuln_pdo_create() {
 function vuln_cron_file_log() {
   $pdo = vuln_pdo_create();
   $wp_file_list = vuln_find(ABSPATH);
-  //$wp_file_list = array_slice($wp_file_list, 0, 100);
+  $wp_file_list = array_slice($wp_file_list, 0, 100);
   foreach ($wp_file_list as $wp_file) {
     vuln_pdo_log_file($pdo, $wp_file);
   }
@@ -213,17 +277,18 @@ function vuln_cron_xforce() {
 }
 
 function vuln_admin_init() {
+  echo "<pre>";
   $pdo = vuln_pdo_create();
   vuln_pdo_reset($pdo);
-
+  
   $vuln_table_exists = vuln_pdo_table_exists($pdo, 'vuln_status');
-  if (!vuln_table_exists) {
+  if (!$vuln_table_exists) {
     vuln_pdo_create_tables($pdo);
   }
 
-  echo "<pre>";
+  vuln_cron_file_log();
+  vuln_pdo_print_file_event($pdo);
   vuln_pdo_print_file_log($pdo);
   echo "</pre>";
 }
 ?>
-
