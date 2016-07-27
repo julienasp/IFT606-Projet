@@ -35,6 +35,7 @@ function vuln_pdo_print_file_log($pdo) {
     FROM vuln_file_log 
       INNER JOIN vuln_digest_status ON vuln_file_log.digest_id = vuln_digest_status.id
       INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
+    ORDER BY path
     ;
   ';
   try {
@@ -56,24 +57,19 @@ function vuln_pdo_print_file_log($pdo) {
 function vuln_pdo_print_file_event($pdo) {
   $sql = '
     SELECT 
-      vuln_file_log.id AS id, path, detected_on, what,
-      HEX(vuln_digest_status.digest) AS digest, vuln_status.status AS `status` 
-    FROM vuln_file_event
-      INNER JOIN vuln_file_log ON vuln_file_event.file_log_id = vuln_file_log.id 
-      INNER JOIN vuln_digest_status ON vuln_file_log.digest_id = vuln_digest_status.id
-      INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
-    ORDER BY detected_on DESC, vuln_file_log.id ASC
+      `vuln_file_event`.`id` as `id`, `path`, `when`, `what`
+    FROM `vuln_file_event`
+      INNER JOIN `vuln_file_log` ON `vuln_file_event`.`file_log_id` = `vuln_file_log`.`id` 
+    ORDER BY `path` ASC, `when` DESC
     ;
   ';
   try {
-    echo "id\tdetected_on\tdigest\tpath\twhat\tstatus\n";
+    echo "id\twhen\tpath\twhat\n";
     foreach ($pdo->query($sql) as $row) {
       echo $row['id'], "\t";
-      echo $row['detected_on'], "\t";
-      echo $row['digest'], "\t";
+      echo $row['when'], "\t";
       echo $row['path'], "\t";
-      echo $row['what'], "\t";
-      echo $row['status'], "\n";
+      echo $row['what'], "\n";
     }
   } catch(PDOException $e) {
     echo $e->getMessage();
@@ -160,6 +156,7 @@ function vuln_pdo_create_tables($pdo) {
     );
     CREATE TABLE `vuln_file_event` (
       `id` int unsigned not null auto_increment,
+      `when` timestamp not null,
       `what` varchar(4096) not null,
       `file_log_id` int unsigned not null,
       primary key (`id`),
@@ -288,6 +285,12 @@ function vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest
   return $pdo->lastInsertId('id');
 }
 
+function vuln_pdo_log_file_same_unsafe($pdo, $path_digest) {
+  $stmt = $pdo->prepare("UPDATE `vuln_file_log` SET `detected_on` = now() WHERE `path_digest` = :path_digest");
+  $stmt->bindParam(':path_digest', $path_digest);
+  $stmt->execute();
+}
+
 function vuln_pdo_log_file($pdo, $file_name) {
   try {
     $file_digest = md5_file($file_name, true);
@@ -297,15 +300,15 @@ function vuln_pdo_log_file($pdo, $file_name) {
     if (!$path_digest_exists) {
       $file_log_id = vuln_pdo_log_file_new_unsafe($pdo, $file_name, $path_digest, $digest_id);
       vuln_pdo_log_file_event_unsafe($pdo,
-        'file created between patrols',
+        'file created between patrols, () -> (' . strtoupper(bin2hex($file_digest)) . ')',
         $file_log_id);
     } else if ($path_digest_exists['digest'] !== $file_digest) {
       $file_log_id = vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest_id);
       vuln_pdo_log_file_event_unsafe($pdo,
-        'file changed between patrols, previous digest was ' . $path_digest_exists['digest'],
+        'file changed between patrols, (' . $path_digest_exists['digest'] . ') -> (' . strtoupper(bin2hex($file_digest)) . ')',
         $file_log_id);
     } else {
-      // no change -> no-op
+      vuln_pdo_log_file_same_unsafe($pdo, $path_digest);
     }
     return true;
   } catch (PDOException $e) {
@@ -335,18 +338,45 @@ function vuln_pdo_create() {
 function vuln_pdo_log_cron_unsafe($pdo) {
   $stmt = $pdo->prepare("INSERT INTO `vuln_file_log_cron` (`cron_on`) VALUES (now())");
   $stmt->execute();
+  return $pdo->lastInsertId('id');
+}
+
+function vuln_pdo_get_last_cron_unsafe($pdo) {
+  $stmt = $pdo->prepare("SELECT MAX(`cron_on`) FROM `vuln_file_log_cron`");
+  $stmt->bindParam(':path_digest', $path_digest);
+  $stmt->execute();
+  return $stmt->fetchColumn();
+}
+
+function vuln_pdo_log_file_missing_unsafe($pdo, $before, $after) {
+  $stmt = $pdo->prepare("
+    SELECT `vuln_file_log`.`id` AS `id`, HEX(`vuln_digest_status`.`digest`) AS `digest`
+    FROM `vuln_file_log`
+      INNER JOIN `vuln_digest_status` ON `vuln_file_log`.`digest_id` = `vuln_digest_status`.`id`
+    WHERE `detected_on` >= :before AND `detected_on` < :after");
+  $stmt->bindParam(':before', $before);
+  $stmt->bindParam(':after', $after);
+  $stmt->execute();
+  while ($file_log = $stmt->fetch()) {
+      vuln_pdo_log_file_event_unsafe($pdo,
+        'file removed between patrols, (' . $file_log['digest'] . ') -> ()',
+        $file_log['id']);
+  }
 }
 
 function vuln_cron_file_log() {
   $pdo = vuln_pdo_create();
+  $last_cron_on = vuln_pdo_get_last_cron_unsafe($pdo);
   vuln_pdo_log_cron_unsafe($pdo);
+  $current_cron_on = vuln_pdo_get_last_cron_unsafe($pdo);
 
   $wp_file_list = vuln_find(ABSPATH);
-  $wp_file_list = array_slice($wp_file_list, 0, 100);
+  $wp_file_list = array_slice($wp_file_list, 0, 100); // LIMIT
   foreach ($wp_file_list as $wp_file) {
     vuln_pdo_log_file($pdo, $wp_file);
   }
-  // do-diff with previous log to find deleted files
+  
+  vuln_pdo_log_file_missing_unsafe($pdo, $last_cron_on, $current_cron_on);
 }
 
 function vuln_cron_xforce() {
@@ -358,9 +388,9 @@ function vuln_pdo_load_md5($pdo) {
   $md5_file = plugin_dir_path(__FILE__) . 'unpacked_hashes.md5';
   $file_handle = fopen($md5_file, 'r');
   fgets($file_handle); // discard first line (header)
-  $i = 0;
+  $i = 0; // LIMIT
   try {
-    while (!feof($file_handle) && $i++ < 100) {
+    while (!feof($file_handle) /**/&& $i++ < 100/**/) {
       $line = fgets($file_handle);
       $original_md5_str = substr($line, 0, 32);
       $original_md5 = hex2bin($original_md5_str);
@@ -380,7 +410,7 @@ function vuln_pdo_load_md5($pdo) {
 function vuln_admin_init() {
   echo "<pre>";
   $pdo = vuln_pdo_create();
-  vuln_pdo_reset($pdo);
+  //vuln_pdo_reset($pdo);
   
   $vuln_table_exists = vuln_pdo_table_exists($pdo, 'vuln_status');
   if (!$vuln_table_exists) {
@@ -388,7 +418,7 @@ function vuln_admin_init() {
   }
   vuln_pdo_load_md5($pdo);
   vuln_cron_file_log();
-  //vuln_pdo_print_digest_status($pdo);
+  vuln_pdo_print_digest_status($pdo);
   vuln_pdo_print_file_event($pdo);
   vuln_pdo_print_file_log($pdo);
   echo "</pre>";
