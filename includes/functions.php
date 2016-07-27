@@ -44,7 +44,7 @@ function get_vuln_wordpress( &$wpdb, $wpVersion  ) {
  * \param string $pluginName nom du plugin pour lequel on fait l'appel.
  * \return Array retourne un tableau assosiatif
  */
-function get_vuln_plugin( &$wpdb, $pluginName  ) {
+function get_vuln_plugin( &$wpdb, $pluginName,$pluginVersion  ) {
 $pluginName = str_replace(" ", "",$pluginName); // on retire les espaces pour la requête http    
 //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
     $sql="select *
@@ -54,7 +54,7 @@ $pluginName = str_replace(" ", "",$pluginName); // on retire les espaces pour la
     $sql.=$where;    
     $result = $wpdb->get_results( $sql );
     if($result == NULL){        
-        $temp = get_wp_vuln_from_api($wpdb,$pluginName);
+        $temp = get_plugin_vuln_from_api($wpdb,$pluginName,$pluginVersion);
         if($temp == NULL) return NULL;
         return $temp;
     }
@@ -109,7 +109,7 @@ function get_wp_vuln_from_api(&$wpdb,$wpVersion){
  * \param string $pluginName nom du plugin pour lequel on fait l'appel.
  * \return Array retourne un tableau assosiatif ou NULL
  */
-function get_plugin_vuln_from_api(&$wpdb,$pluginName){
+function get_plugin_vuln_from_api(&$wpdb,$pluginName,$pluginVersion){
     $url ='https://wpvulndb.com/api/v2/plugins/'.$pluginName.'/';
     
 
@@ -143,6 +143,7 @@ function get_plugin_vuln_from_api(&$wpdb,$pluginName){
     
     if($vuln != false){
         $vuln['plugin_name'] = $pluginName;
+        $vuln['plugin_version'] = $pluginVersion;
         return insert_plugin_vuln($wpdb,$vuln);
     }
     else {
@@ -193,8 +194,8 @@ function insert_plugin_vuln(&$wpdb,$result){
         $values=array(
             'vuldbapi_id'=>$vuln['id'],
             'title'=>htmlspecialchars($vuln['title'],ENT_QUOTES),
-            'plugin_name'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
-            'plugin_version'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
+            'plugin_name'=>htmlspecialchars($result['plugin_name'],ENT_QUOTES),
+            'plugin_version'=>htmlspecialchars($result['plugin_version'],ENT_QUOTES),
             'reference'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
             'vuln_type'=>htmlspecialchars($vuln['vuln_type'],ENT_QUOTES),
             'fixed_in'=>htmlspecialchars($vuln['fixed_in'],ENT_QUOTES)
