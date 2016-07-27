@@ -26,7 +26,7 @@ if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}wordpress_vulnerabilities'"
 	vuldbapi_id integer not null,
 	title TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	wordpress_version TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,	
-	references TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+	reference TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	vuln_type TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	fixed_in TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	
@@ -42,7 +42,7 @@ if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}plugins_vulnerabilities'") 
 	title TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	plugin_name TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	plugin_version TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,	
-	references TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+	reference TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	vuln_type TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	fixed_in TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 

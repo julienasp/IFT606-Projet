@@ -166,7 +166,7 @@ function insert_wordpress_vuln($result){
             'vuldbapi_id'=>$vuln['id'],
             'title'=>htmlspecialchars($vuln['title'],ENT_QUOTES),
             'wordpress_version'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
-            'references'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
+            'reference'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
             'vuln_type'=>htmlspecialchars($vuln['vuln_type'],ENT_QUOTES),
             'fixed_in'=>htmlspecialchars($vuln['fixed_in'],ENT_QUOTES)
         );
@@ -195,7 +195,7 @@ function insert_plugin_vuln($result){
             'title'=>htmlspecialchars($vuln['title'],ENT_QUOTES),
             'plugin_name'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
             'plugin_version'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
-            'references'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
+            'reference'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
             'vuln_type'=>htmlspecialchars($vuln['vuln_type'],ENT_QUOTES),
             'fixed_in'=>htmlspecialchars($vuln['fixed_in'],ENT_QUOTES)
         );
