@@ -305,7 +305,7 @@ function vuln_pdo_log_file($pdo, $file_name) {
     } else if ($path_digest_exists['digest'] !== $file_digest) {
       $file_log_id = vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest_id);
       vuln_pdo_log_file_event_unsafe($pdo,
-        'file changed between patrols, (' . $path_digest_exists['digest'] . ') -> (' . strtoupper(bin2hex($file_digest)) . ')',
+        'file changed between patrols, (' . strtoupper(bin2hex($path_digest_exists['digest'])) . ') -> (' . strtoupper(bin2hex($file_digest)) . ')',
         $file_log_id);
     } else {
       vuln_pdo_log_file_same_unsafe($pdo, $path_digest);
