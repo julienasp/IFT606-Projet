@@ -24,7 +24,7 @@ function vuln_deactivation() {
 function vuln_pdo_print_file_log($pdo) {
   $sql = '
     SELECT 
-      vuln_file_log.id AS id, path, detected_on,
+      vuln_file_log.id AS id, path, detected_on, HEX(path_digest) AS path_digest,
       HEX(vuln_digest_status.digest) AS digest, vuln_status.status AS `status` 
     FROM vuln_file_log 
       INNER JOIN vuln_digest_status ON vuln_file_log.digest_id = vuln_digest_status.id
@@ -32,11 +32,12 @@ function vuln_pdo_print_file_log($pdo) {
     ;
   ';
   try {
-    echo "id\tdetected_on\tdigest\tpath\tstatus\n";
+    echo "id\tdetected_on\tdigest\tpath_digest\tpath\tstatus\n";
     foreach ($pdo->query($sql) as $row) {
       echo $row['id'], "\t";
       echo $row['detected_on'], "\t";
       echo $row['digest'], "\t";
+      echo $row['path_digest'], "\t";
       echo $row['path'], "\t";
       echo $row['status'], "\n";
     }
@@ -55,6 +56,7 @@ function vuln_pdo_print_file_event($pdo) {
       INNER JOIN vuln_file_log ON vuln_file_event.file_log_id = vuln_file_log.id 
       INNER JOIN vuln_digest_status ON vuln_file_log.digest_id = vuln_digest_status.id
       INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
+    ORDER BY detected_on DESC, vuln_file_log.id ASC
     ;
   ';
   try {
@@ -106,7 +108,7 @@ function vuln_pdo_create_tables($pdo) {
     ;
     CREATE TABLE `vuln_file_log` (
       `id` int unsigned not null auto_increment,
-      `path` VARCHAR(4096) not null,
+      `path` varchar(4096) not null,
       `path_digest` binary(16) unique,
       `detected_on` timestamp not null,
       `digest_id` int unsigned not null,
@@ -125,7 +127,7 @@ function vuln_pdo_create_tables($pdo) {
     ;
     CREATE TABLE `vuln_file_log_cron` (
       `id` int unsigned not null auto_increment,
-      `cron_on` TIMESTAMP not null,
+      `cron_on` timestamp not null,
       primary key (`id`)
     );
     CREATE TABLE `vuln_file_event` (
@@ -214,33 +216,72 @@ function print_array($arr) {
   }
 }
 
+function vuln_pdo_log_digest_unsafe($pdo, $file_digest) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_digest_status` (`digest`, `status_id`) VALUES (:digest, 3) ON DUPLICATE KEY UPDATE digest=digest");
+  $stmt->bindParam(':digest', $file_digest);
+  $stmt->execute();
+  return $pdo->lastInsertId('id');
+}
+
+function vuln_pdo_get_file_log_unsafe($pdo, $path_digest) {
+  $stmt = $pdo->prepare("
+    SELECT `vuln_digest_status`.`digest` as `digest`
+    FROM `vuln_file_log`
+      INNER JOIN `vuln_digest_status` ON `vuln_file_log`.`digest_id` = `vuln_digest_status`.`id`
+    WHERE `path_digest` = :path_digest");
+  $stmt->bindParam(':path_digest', $path_digest);
+  $stmt->execute();
+  return $stmt->fetch();
+}
+
+function vuln_pdo_log_file_event_unsafe($pdo, $what, $file_log_id) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_file_event` (`what`, `file_log_id`) VALUES (:what, :file_log_id)");
+  $stmt->bindParam(':what', $what);
+  $stmt->bindParam(':file_log_id', $file_log_id);
+  $stmt->execute();
+}
+
+function vuln_pdo_log_file_new_unsafe($pdo, $file_name, $path_digest, $digest_id) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_file_log` (`path`, `path_digest`, `detected_on`, `digest_id`) VALUES (:path, :path_digest, now(), :digest_id)");
+  $stmt->bindParam(':path', $file_name);
+  $stmt->bindParam(':path_digest', $path_digest);
+  $stmt->bindParam(':digest_id', $digest_id);
+  $stmt->execute();
+  return $pdo->lastInsertId('id');
+}
+
+function vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest_id) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_file_log` (`path`, `path_digest`, `detected_on`, `digest_id`) VALUES (:path, :path_digest, now(), :digest_id) ON DUPLICATE KEY UPDATE `digest_id` = :digest_id");
+  $stmt->bindParam(':path', $file_name);
+  $stmt->bindParam(':path_digest', $path_digest);
+  $stmt->bindParam(':digest_id', $digest_id);
+  $stmt->execute();
+  return $pdo->lastInsertId('id');
+}
+
 function vuln_pdo_log_file($pdo, $file_name) {
   try {
     $file_digest = md5_file($file_name, true);
     $path_digest = md5($file_name, true);
-    $stmt = $pdo->prepare("INSERT INTO `vuln_digest_status` (`digest`, `status_id`) VALUES (:digest, 3) ON DUPLICATE KEY UPDATE digest=digest");
-    $stmt->bindParam(':digest', $file_digest);
-    $stmt->execute();
-    $digest_id = $pdo->lastInsertId('id');
-    
-    $stmt = $pdo->prepare("SELECT `id`, `digest` FROM `vuln_file_log` WHERE `path_digest` = :path_digest");
-    $stmt->bindParam(':path_digest', $path_digest);
-    $stmt->execute();
-    $path_digest_exists = $stmt->fetch();
-    if ($path_digest_exists && $path_digest_exists['digest'] !== $file_digest) {
-      $stmt = $pdo->prepare("INSERT INTO `vuln_file_event` (`what`, `file_log_id`) VALUES (:what, :file_digest_id)");
-      $stmt->bindParam(':what', 'file changed between patrols');
-      $stmt->bindParam(':file_log_id', $path_digest_exists['id']);
-      $stmt->execute();
+    $digest_id = vuln_pdo_log_digest_unsafe($pdo, $file_digest);
+    $path_digest_exists = vuln_pdo_get_file_log_unsafe($pdo, $path_digest);
+    if (!$path_digest_exists) {
+      $file_log_id = vuln_pdo_log_file_new_unsafe($pdo, $file_name, $path_digest, $digest_id);
+      vuln_pdo_log_file_event_unsafe($pdo,
+        'file created between patrols',
+        $file_log_id);
+    } else if ($path_digest_exists['digest'] !== $file_digest) {
+      $file_log_id = vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest_id);
+      vuln_pdo_log_file_event_unsafe($pdo,
+        'file changed between patrols, previous digest was ' . $path_digest_exists['digest'],
+        $file_log_id);
     } else {
-      $stmt = $pdo->prepare("INSERT INTO `vuln_file_log` (`path`, `path_digest`, `detected_on`, `digest_id`) VALUES (:path, :path_digest, now(), :digest_id)");
-      $stmt->bindParam(':path', $file_name);
-      $stmt->bindParam(':path_digest', $path_digest);
-      $stmt->bindParam(':digest_id', $digest_id);
-      $stmt->execute();
+      // no change -> no-op
     }
     return true;
   } catch (PDOException $e) {
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
     return false;
   }
 }
@@ -262,8 +303,15 @@ function vuln_pdo_create() {
   }
 }
 
+function vuln_pdo_log_cron_unsafe($pdo) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_file_log_cron` (`cron_on`) VALUES (now())");
+  $stmt->execute();
+}
+
 function vuln_cron_file_log() {
   $pdo = vuln_pdo_create();
+  vuln_pdo_log_cron_unsafe($pdo);
+
   $wp_file_list = vuln_find(ABSPATH);
   $wp_file_list = array_slice($wp_file_list, 0, 100);
   foreach ($wp_file_list as $wp_file) {
@@ -279,14 +327,18 @@ function vuln_cron_xforce() {
 function vuln_admin_init() {
   echo "<pre>";
   $pdo = vuln_pdo_create();
-  vuln_pdo_reset($pdo);
+  //vuln_pdo_reset($pdo);
   
   $vuln_table_exists = vuln_pdo_table_exists($pdo, 'vuln_status');
   if (!$vuln_table_exists) {
     vuln_pdo_create_tables($pdo);
   }
 
-  vuln_cron_file_log();
+  $wp_file_list = vuln_find(ABSPATH);
+  $wp_file_list = array_slice($wp_file_list, 0, 100);
+  foreach ($wp_file_list as $wp_file) {
+    vuln_pdo_log_file($pdo, $wp_file);
+  }
   vuln_pdo_print_file_event($pdo);
   vuln_pdo_print_file_log($pdo);
   echo "</pre>";
