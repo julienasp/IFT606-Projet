@@ -21,17 +21,16 @@ if ( ! defined( 'ABSPATH' ) ) {
  * \return Array retourne un tableau assosiatif ou NULL
  */
 function get_vuln_wordpress( &$wpdb, $wpVersion  ) {    
-    
+    $wpVersion = str_replace(".", "", $wpVersion); // on retire le . pour la requête http
     //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
     $sql="select *
-		FROM {$wpdb->prefix}wordpress_vulnerabilities t";
+		FROM {$wpdb->prefix}wordpress_vulnerabilities ";
     // On sélectionne seulement la version demandé            
     $where='WHERE wordpress_version = "'.$wpVersion.'"';
-    $sql.=$where;    
+    $sql.=$where;
     $result = $wpdb->get_results( $sql );
-    if($result == NULL){
-        $wpVersion = str_replace(".", ""); // on retire le . pour la requête http
-        $temp = get_wp_vuln_from_api($wpVersion);
+    if($result == NULL){        
+        $temp = get_wp_vuln_from_api($wpdb,$wpVersion);
         if($temp == NULL) return NULL;
         return $temp;
     }
@@ -46,16 +45,16 @@ function get_vuln_wordpress( &$wpdb, $wpVersion  ) {
  * \return Array retourne un tableau assosiatif
  */
 function get_vuln_plugin( &$wpdb, $pluginName  ) {
-    //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
+$pluginName = str_replace(" ", "",$pluginName); // on retire les espaces pour la requête http    
+//Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
     $sql="select *
-		FROM {$wpdb->prefix}plugins_vulnerabilities t";
+		FROM {$wpdb->prefix}plugins_vulnerabilities ";
     // On sélectionne seulement la version demandé            
     $where='WHERE plugin_name = "'.$pluginName.'"';
     $sql.=$where;    
     $result = $wpdb->get_results( $sql );
-    if($result == NULL){
-        $pluginName = str_replace(" ", ""); // on retire les espaces pour la requête http
-        $temp = get_wp_vuln_from_api($pluginName);
+    if($result == NULL){        
+        $temp = get_wp_vuln_from_api($wpdb,$pluginName);
         if($temp == NULL) return NULL;
         return $temp;
     }
@@ -68,7 +67,7 @@ function get_vuln_plugin( &$wpdb, $pluginName  ) {
  * \param string $wpVersion version de wordpress pour lequel on fait l'appel.
  * \return Array retourne un tableau assosiatif ou NULL
  */
-function get_wp_vuln_from_api($wpVersion){
+function get_wp_vuln_from_api(&$wpdb,$wpVersion){
     $url ='https://wpvulndb.com/api/v2/wordpresses/'.$wpVersion.'/';    
     if(get_http_response_code($url) != "200"){
         return NULL;
@@ -91,12 +90,12 @@ function get_wp_vuln_from_api($wpVersion){
     // Fermeture de la session cURL
     curl_close($CURL);
     
-    $result=json_decode($json_response); //json_decode pour transformer la string en assosiative array  
+    $result=json_decode($json_response,true); //json_decode pour transformer la string en assosiative array  
     $vuln = reset($result); // retourne le premier element aka le array avec la version courante
     
     if($vuln != false){
         $vuln['wordpress_version'] = $wpVersion;
-        return insert_wordpress_vuln($vuln);
+        return insert_wordpress_vuln($wpdb,$vuln);
     }
     else {
         return NULL;    
@@ -110,8 +109,9 @@ function get_wp_vuln_from_api($wpVersion){
  * \param string $pluginName nom du plugin pour lequel on fait l'appel.
  * \return Array retourne un tableau assosiatif ou NULL
  */
-function get_plugin_vuln_from_api($pluginName){
+function get_plugin_vuln_from_api(&$wpdb,$pluginName){
     $url ='https://wpvulndb.com/api/v2/plugins/'.$pluginName.'/';
+    
 
     $context = stream_context_create($opts);
     if(get_http_response_code($url) != "200"){
@@ -137,13 +137,13 @@ function get_plugin_vuln_from_api($pluginName){
     // Fermeture de la session cURL
     curl_close($CURL);
     
-    $result=json_decode($json_response); //json_decode pour transformer la string en assosiative array    
+    $result=json_decode($json_response,true); //json_decode pour transformer la string en assosiative array    
     
     $vuln = reset($result); // retourne le premier element aka le array avec la version courante
     
     if($vuln != false){
         $vuln['plugin_name'] = $pluginName;
-        return insert_plugin_vuln($vuln);
+        return insert_plugin_vuln($wpdb,$vuln);
     }
     else {
         return NULL;    
@@ -156,7 +156,7 @@ function get_plugin_vuln_from_api($pluginName){
  * \param Object $url le url sur lequel on fait l'appel
  * \return un code de reponse http
  */
-function insert_wordpress_vuln($result){
+function insert_wordpress_vuln(&$wpdb,$result){
     
     $vulnsFormated = array();
     
@@ -184,7 +184,7 @@ function insert_wordpress_vuln($result){
  * \param Object $url le url sur lequel on fait l'appel
  * \return un code de reponse http
  */
-function insert_plugin_vuln($result){
+function insert_plugin_vuln(&$wpdb,$result){
     
     $vulnsFormated = array();
     
