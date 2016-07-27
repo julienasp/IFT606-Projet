@@ -5,6 +5,12 @@ Description: Testing
 Author: Patate en chaleur
 Version: 1000.3
 */
+
+if (!defined(ABSPATH)) {
+  echo "go away";
+  //exit;
+}
+
 add_action('admin_menu', 'vuln_admin_setup_menu');
 function vuln_admin_setup_menu() {
   add_menu_page('Vuln debug', 'Vuln', 'manage_options', 'vuln-plugin', 'vuln_admin_init');
@@ -75,6 +81,27 @@ function vuln_pdo_print_file_event($pdo) {
   }
 }
 
+function vuln_pdo_print_digest_status($pdo) {
+  $sql = '
+    SELECT
+      vuln_digest_status.id AS id, HEX(vuln_digest_status.digest) AS digest, vuln_status.status AS `status` 
+    FROM vuln_digest_status
+      INNER JOIN vuln_status ON vuln_digest_status.status_id = vuln_status.id
+    ;
+  ';
+  try {
+    echo "id\tdigest\tstatus\n";
+    foreach ($pdo->query($sql) as $row) {
+      echo $row['id'], "\t";
+      echo $row['digest'], "\t";
+      echo $row['status'], "\n";
+    }
+  } catch(PDOException $e) {
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
+  }
+}
+
 function vuln_pdo_create_tables($pdo) {
   $sql ="
     CREATE TABLE `vuln_status` (
@@ -92,9 +119,10 @@ function vuln_pdo_create_tables($pdo) {
     ;
     CREATE TABLE `vuln_digest_status` (
       `id` int unsigned not null auto_increment,
-      `digest` binary(16) not null,
+      `digest` binary(16) not null unique,
       `status_id` int unsigned not null,
       primary key (`id`),
+      index `vuln_digest_status_idx_digest` (`digest`),
       index `vuln_digest_status_idx_status_id` (`status_id`),
       foreign key (`status_id`)
         references `vuln_status` (`id`)
@@ -216,9 +244,10 @@ function print_array($arr) {
   }
 }
 
-function vuln_pdo_log_digest_unsafe($pdo, $file_digest) {
-  $stmt = $pdo->prepare("INSERT INTO `vuln_digest_status` (`digest`, `status_id`) VALUES (:digest, 3) ON DUPLICATE KEY UPDATE digest=digest");
+function vuln_pdo_log_digest_unsafe($pdo, $file_digest, $status_id = 4) {
+  $stmt = $pdo->prepare("INSERT INTO `vuln_digest_status` (`digest`, `status_id`) VALUES (:digest, :status_id) ON DUPLICATE KEY UPDATE `status_id` = IF(`status_id` = 3, :status_id, `status_id`), `id` = LAST_INSERT_ID(`id`)");
   $stmt->bindParam(':digest', $file_digest);
+  $stmt->bindParam(':status_id', $status_id);
   $stmt->execute();
   return $pdo->lastInsertId('id');
 }
@@ -317,6 +346,7 @@ function vuln_cron_file_log() {
   foreach ($wp_file_list as $wp_file) {
     vuln_pdo_log_file($pdo, $wp_file);
   }
+  // do-diff with previous log to find deleted files
 }
 
 function vuln_cron_xforce() {
@@ -324,21 +354,41 @@ function vuln_cron_xforce() {
   $api_pwd = 'eee3870a-e8ab-4a01-83a9-4c024b509ecd';
 }
 
+function vuln_pdo_load_md5($pdo) {
+  $md5_file = plugin_dir_path(__FILE__) . 'unpacked_hashes.md5';
+  $file_handle = fopen($md5_file, 'r');
+  fgets($file_handle); // discard first line (header)
+  $i = 0;
+  try {
+    while (!feof($file_handle) && $i++ < 100) {
+      $line = fgets($file_handle);
+      $original_md5_str = substr($line, 0, 32);
+      $original_md5 = hex2bin($original_md5_str);
+      vuln_pdo_log_digest_unsafe($pdo, $original_md5, 2);
+
+      $unpacked_md5_str = substr($line, 32+2, 32);
+      $unpacked_md5 = hex2bin($unpacked_md5_str);
+      vuln_pdo_log_digest_unsafe($pdo, $unpacked_md5, 2);
+    }
+  } catch(PDOException $e) {
+    echo $e->getMessage();
+    echo $e->getTraceAsString();
+  }
+  fclose($file_handle);
+}
+
 function vuln_admin_init() {
   echo "<pre>";
   $pdo = vuln_pdo_create();
-  //vuln_pdo_reset($pdo);
+  vuln_pdo_reset($pdo);
   
   $vuln_table_exists = vuln_pdo_table_exists($pdo, 'vuln_status');
   if (!$vuln_table_exists) {
     vuln_pdo_create_tables($pdo);
   }
-
-  $wp_file_list = vuln_find(ABSPATH);
-  $wp_file_list = array_slice($wp_file_list, 0, 100);
-  foreach ($wp_file_list as $wp_file) {
-    vuln_pdo_log_file($pdo, $wp_file);
-  }
+  vuln_pdo_load_md5($pdo);
+  vuln_cron_file_log();
+  //vuln_pdo_print_digest_status($pdo);
   vuln_pdo_print_file_event($pdo);
   vuln_pdo_print_file_log($pdo);
   echo "</pre>";
