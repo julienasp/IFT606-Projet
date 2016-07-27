@@ -1,20 +1,20 @@
 <?php
 /**
- * Plugin Name: Plugin de gestion d'anomalies
- * Description: Mini gestionnaires d'anomalies pour le Travail pratique 1 du cours IGL711
+ * Plugin Name: Vulnfinder
+ * Description: Plugin pour trouver les vulnérabilités de wordpress et des plugins installés
  * License: éducation
  * Version: 0.0.1
  * Author: Julien Aspirot
  */
 
 /**
- * \file anomalies-plugin.php
+ * \file vulnfinder-plugin.php
  * Fichier d'initialisation, wordpress repère dynamiquement ce fichier nous permettant ainsi d'activer ou desactiver le plugin.
  * Lorsque Wordpress active ou desactive le plugin ce fichier sera executé.
  * \author Julien Aspirot <julien.aspirot@usherbrooke.ca>
  * \brief     Fichier d'initialisation, wordpress repère dynamiquement ce fichier nous permettant ainsi d'activer ou desactiver le plugin.
  * \date 26/09/2015
- * \copyright Équipe 2 - IGL711
+ * \copyright IFT606 - WPVulz
  *
  */
 
@@ -45,85 +45,6 @@ function installation()
 
 //Inclusion de tous les fichiers nécessaires
 include_once(plugin_dir_path(__FILE__) . 'includes/create_bd.php'); //S'assure que les tables sont présentes
-
-//On valide si la page pour les détails d'une anomalie existe
-$page_details = get_page_by_title( "Détails d'une anomalie" );
-$GLOBALS['page_detail_id'] = 0;
-if(is_null( $page_details ) )
-{
-    //n'existe pas alors on la crée
-    $new_post = array(
-        'post_title' => "Détails d'une anomalie",
-        'post_content' => '[mga_shortcode_single]',
-        'post_status' => 'publish',
-        'post_date' => date('Y-m-d H:i:s'),
-        'post_author' => 1,
-        'post_type' => 'page',
-    );
-    $GLOBALS['page_detail_id'] = wp_insert_post($new_post);
-}
-else
-{
-    $GLOBALS['page_detail_id'] = $page_details->ID;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-//Ajout d'un shortcode [mga_shortcode_ajout] permettant de générer le code necessaire à l'ajout des anomalies
-add_shortcode( 'mga_shortcode_ajout','mga_shortcode_ajout' );
-
-
-/**
- * \fn mga_shortcode_ajout()
- * \brief S'occupe de générer tout le code html, css et php pour l'ajout d'une anomalie.
- * \post création d'un shortcode wordpress, qui contient du code html, css et php.
- * \return void
- */
-function mga_shortcode_ajout(){
-    ob_start();
-    echo '<div class="support_bs">';
-    include_once( plugin_dir_path(__FILE__) . 'includes/create_new_ticket.php' );
-    echo '</div>';
-    return ob_get_clean();
-}
-
-//Ajout d'un shortcode [mga_shortcode_listing] permettant de générer le code necessaire au listing des anomalies
-add_shortcode( 'mga_shortcode_listing','mga_shortcode_listing' );
-
-
-/**
- * \fn mga_shortcode_listing()
- * \brief S'occupe de générer tout le code html, css et php pour la table d'énumération des anomalies.
- * \post création d'un shortcode wordpress, qui contient du code html, css et php.
- * \return void
- */
-function mga_shortcode_listing(){
-    ob_start();
-    echo '<div class="support_bs">';
-    include_once( plugin_dir_path(__FILE__) . 'includes/listing_anomalies.php' );
-    echo '</div>';
-    return ob_get_clean();
-}
-
-//Ajout d'un shortcode [mga_shortcode_single] permettant de générer le code necessaire voir et modifier les détails d'une anomalie
-add_shortcode( 'mga_shortcode_single','mga_shortcode_single' );
-
-
-/**
- * \fn mga_shortcode_single()
- * \brief S'occupe de générer tout le code html, css et php pour afficher les détails d'une anomalie.
- * \post création d'un shortcode wordpress, qui contient du code html, css et php.
- * \return void
- */
-function mga_shortcode_single(){
-    ob_start();
-    echo '<div class="support_bs">';
-    include_once( plugin_dir_path(__FILE__) . 'includes/single_anomalie.php' );
-    echo '</div>';
-    return ob_get_clean();
-}
 
 //Ajout d'actions afin de bien lier tous les fichiers de style et javascript que nous allons ajouter dans le header
 add_action( 'wp_enqueue_scripts', 'loadScripts' );

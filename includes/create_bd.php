@@ -29,7 +29,6 @@ if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}wordpress_vulnerabilities'"
 	references TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	vuln_type TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	fixed_in TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
-	raw_json TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	
 	PRIMARY KEY (id)
 	);");
@@ -46,7 +45,6 @@ if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}plugins_vulnerabilities'") 
 	references TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	vuln_type TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 	fixed_in TINYTEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
-	raw_json TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
 
 	PRIMARY KEY (id)
 	);");

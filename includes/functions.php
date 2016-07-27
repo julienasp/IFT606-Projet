@@ -14,13 +14,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * \fn get_anomalies_from_page( &$wpdb, $wpVersion )
- * \brief s'occupe de retourner un assosiative array avec la réponse ou null si aucun anomalie
+ * \fn get_vuln_wordpress( &$wpdb, $wpVersion )
+ * \brief s'occupe de retourner un assosiative array avec la réponse ou null si aucun vuln
  * \param Object &$wpdb reférence sur l'objet wordpress database
  * \param string $wpVersion version de wordpress pour lequel on fait l'appel.
- * \return Array retourne un tableau assosiatif
+ * \return Array retourne un tableau assosiatif ou NULL
  */
-function get_vulz_from_wordpress( &$wpdb, $wpVersion  ) {
+function get_vuln_wordpress( &$wpdb, $wpVersion  ) {    
+    
     //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
     $sql="select *
 		FROM {$wpdb->prefix}wordpress_vulnerabilities t";
@@ -28,29 +29,182 @@ function get_vulz_from_wordpress( &$wpdb, $wpVersion  ) {
     $where='WHERE wordpress_version = "'.$wpVersion.'"';
     $sql.=$where;    
     $result = $wpdb->get_results( $sql );
-    if(result == NULL){
-        temp = get_wpvulndb_api($wpVersion);
-        
+    if($result == NULL){
+        $wpVersion = str_replace(".", ""); // on retire le . pour la requête http
+        $temp = get_wp_vuln_from_api($wpVersion);
+        if($temp == NULL) return NULL;
+        return $temp;
     }
-    return $wpdb->get_results( $sql );
+    return $result;
 }
 
-function get_wpvulndb_api($wpVersion){
-// Création d'un flux
-$opts = array(
-  'http'=>array(
-    'method'=>"GET"        
-  )
-);
-
-$context = stream_context_create($opts);
-if(get_http_response_code('https://wpvulndb.com/api/v2/wordpresses/'.$wpVersion.'/') != "200"){
-    return NULL;
+/**
+ * \fn get_vuln_plugin( &$wpdb, $pluginName  ) {
+ * \brief s'occupe de retourner un assosiative array de la réponse en DB ou API ou null si aucun anomalie
+ * \param Object &$wpdb reférence sur l'objet wordpress database
+ * \param string $pluginName nom du plugin pour lequel on fait l'appel.
+ * \return Array retourne un tableau assosiatif
+ */
+function get_vuln_plugin( &$wpdb, $pluginName  ) {
+    //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
+    $sql="select *
+		FROM {$wpdb->prefix}plugins_vulnerabilities t";
+    // On sélectionne seulement la version demandé            
+    $where='WHERE plugin_name = "'.$pluginName.'"';
+    $sql.=$where;    
+    $result = $wpdb->get_results( $sql );
+    if($result == NULL){
+        $pluginName = str_replace(" ", ""); // on retire les espaces pour la requête http
+        $temp = get_wp_vuln_from_api($pluginName);
+        if($temp == NULL) return NULL;
+        return $temp;
+    }
+    return $result;
 }
 
-// Open the file using the HTTP headers set above
-$results = file_get_contents('https://wpvulndb.com/api/v2/wordpresses/'.$wpVersion.'/', false, $context);
+/**
+ * \fn get_wp_vulndb_api($wpVersion)
+ * \brief s'occupe de retourner un assosiative array avec la réponse ou null si aucun vuln (CALL API)
+ * \param string $wpVersion version de wordpress pour lequel on fait l'appel.
+ * \return Array retourne un tableau assosiatif ou NULL
+ */
+function get_wp_vuln_from_api($wpVersion){
+    $url ='https://wpvulndb.com/api/v2/wordpresses/'.$wpVersion.'/';    
+    if(get_http_response_code($url) != "200"){
+        return NULL;
+    }    
+    // Tableau contenant les options de téléchargement
+    $options=array(
+          CURLOPT_URL            => $url, // Url cible (l'url la page que vous voulez télécharger)
+          CURLOPT_RETURNTRANSFER => true, // Retourner le contenu téléchargé dans une chaine (au lieu de l'afficher directement)
+          CURLOPT_HEADER         => false // Ne pas inclure l'entête de réponse du serveur dans la chaine retournée
+    ); 
+    // Création d'un nouvelle ressource cURL
+    $CURL=curl_init();
+ 
+    // Configuration des options de téléchargement
+    curl_setopt_array($CURL,$options);
+ 
+    // Exécution de la requête
+    $json_response = curl_exec($CURL);
     
+    // Fermeture de la session cURL
+    curl_close($CURL);
+    
+    $result=json_decode($json_response); //json_decode pour transformer la string en assosiative array  
+    $vuln = reset($result); // retourne le premier element aka le array avec la version courante
+    
+    if($vuln != false){
+        $vuln['wordpress_version'] = $wpVersion;
+        return insert_wordpress_vuln($vuln);
+    }
+    else {
+        return NULL;    
+    }
+}
+
+
+/**
+ * \fn get_wpvulndb_api($wpVersion)
+ * \brief s'occupe de retourner un assosiative array avec la réponse ou null si aucun vuln (CALL API)
+ * \param string $pluginName nom du plugin pour lequel on fait l'appel.
+ * \return Array retourne un tableau assosiatif ou NULL
+ */
+function get_plugin_vuln_from_api($pluginName){
+    $url ='https://wpvulndb.com/api/v2/plugins/'.$pluginName.'/';
+
+    $context = stream_context_create($opts);
+    if(get_http_response_code($url) != "200"){
+        return NULL;
+    }
+    
+    // Tableau contenant les options de téléchargement
+    $options=array(
+          CURLOPT_URL            => $url, // Url cible (l'url la page que vous voulez télécharger)
+          CURLOPT_RETURNTRANSFER => true, // Retourner le contenu téléchargé dans une chaine (au lieu de l'afficher directement)
+          CURLOPT_HEADER         => false // Ne pas inclure l'entête de réponse du serveur dans la chaine retournée
+    );
+ 
+    // Création d'un nouvelle ressource cURL
+    $CURL=curl_init();
+ 
+    // Configuration des options de téléchargement
+    curl_setopt_array($CURL,$options);
+ 
+    // Exécution de la requête
+    $json_response = curl_exec($CURL);
+    
+    // Fermeture de la session cURL
+    curl_close($CURL);
+    
+    $result=json_decode($json_response); //json_decode pour transformer la string en assosiative array    
+    
+    $vuln = reset($result); // retourne le premier element aka le array avec la version courante
+    
+    if($vuln != false){
+        $vuln['plugin_name'] = $pluginName;
+        return insert_plugin_vuln($vuln);
+    }
+    else {
+        return NULL;    
+    }
+}
+
+/**
+ * \fn insert_wordpress_vuln($result)
+ * \brief insert toutes les vulnerabilités dans la BD
+ * \param Object $url le url sur lequel on fait l'appel
+ * \return un code de reponse http
+ */
+function insert_wordpress_vuln($result){
+    
+    $vulnsFormated = array();
+    
+    foreach($result['vulnerabilities'] as $vuln){
+        //Ajout de la vulnerabilité courante
+        $values=array(
+            'vuldbapi_id'=>$vuln['id'],
+            'title'=>htmlspecialchars($vuln['title'],ENT_QUOTES),
+            'wordpress_version'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
+            'references'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
+            'vuln_type'=>htmlspecialchars($vuln['vuln_type'],ENT_QUOTES),
+            'fixed_in'=>htmlspecialchars($vuln['fixed_in'],ENT_QUOTES)
+        );
+        
+        //Insersion des données contenues dans $values dans la table wordpress_vulnerabilities
+        $wpdb->insert($wpdb->prefix.'wordpress_vulnerabilities',$values);
+        array_push($vulnsFormated,$values);
+    }
+    return $vulnsFormated;
+}
+
+/**
+ * \fn insert_plugin_vuln($result)
+ * \brief insert toutes les vulnerabilités dans la BD
+ * \param Object $url le url sur lequel on fait l'appel
+ * \return un code de reponse http
+ */
+function insert_plugin_vuln($result){
+    
+    $vulnsFormated = array();
+    
+    foreach($result['vulnerabilities'] as $vuln){
+        //Ajout de la vulnerabilité courante
+        $values=array(
+            'vuldbapi_id'=>$vuln['id'],
+            'title'=>htmlspecialchars($vuln['title'],ENT_QUOTES),
+            'plugin_name'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
+            'plugin_version'=>htmlspecialchars($result['wordpress_version'],ENT_QUOTES),
+            'references'=>htmlspecialchars($vuln['references']['url'][0],ENT_QUOTES),
+            'vuln_type'=>htmlspecialchars($vuln['vuln_type'],ENT_QUOTES),
+            'fixed_in'=>htmlspecialchars($vuln['fixed_in'],ENT_QUOTES)
+        );
+        
+        //Insersion des données contenues dans $values dans la table wordpress_vulnerabilities
+        $wpdb->insert($wpdb->prefix.'plugins_vulnerabilities',$values);
+        array_push($vulnsFormated,$values);
+    }
+    return $vulnsFormated;
 }
 
 /**
@@ -70,31 +224,4 @@ function get_http_response_code($url) {
     $status = curl_getinfo($c, CURLINFO_HTTP_CODE);
     curl_close($c);
     return $status;
-}
-
-/**
- * \fn get_anomalies_from_page( &$wpdb, $page )
- * \brief s'occupe de retourner un assosiative array de la réponse en DB ou API ou null si aucun anomalie
- * \param Object &$wpdb reférence sur l'objet wordpress database
- * \param string $pluginName nom du plugin pour lequel on fait l'appel.
- * \return Array retourne un tableau assosiatif
- */
-function get_vulz_from_plugin( &$wpdb, $pluginName  ) {
-    //Requête SQL pour avoir toutes les anomalies en lien avec notre numéro de page
-    $sql="select t.*,c.name as category,
-		TIMESTAMPDIFF(MONTH,t.update_time,UTC_TIMESTAMP()) as date_modified_month,
-		TIMESTAMPDIFF(DAY,t.update_time,UTC_TIMESTAMP()) as date_modified_day,
-		TIMESTAMPDIFF(HOUR,t.update_time,UTC_TIMESTAMP()) as date_modified_hour,
- 		TIMESTAMPDIFF(MINUTE,t.update_time,UTC_TIMESTAMP()) as date_modified_min,
- 		TIMESTAMPDIFF(SECOND,t.update_time,UTC_TIMESTAMP()) as date_modified_sec
-		FROM {$wpdb->prefix}mga_anomalies t
-		INNER JOIN {$wpdb->prefix}mga_categories_anomalie c ON t.cat_id=c.id ";
-//La liste est trier en ordre de MàJ
-    $order_by='ORDER BY t.update_time DESC ';
-//On prend 10 tuples à partir de la page ( courante - 1 * 10 ). Donc page 1, nous avons LIMIT 0,10 et pour la page 2 nous avons LIMIT 10,10
-    $limit_start=( $page -1 ) * 10;
-    $limit="LIMIT ".$limit_start.",10 ";
-    $sql.=$order_by;
-    $sql.=$limit;
-    return $wpdb->get_results( $sql );
 }
