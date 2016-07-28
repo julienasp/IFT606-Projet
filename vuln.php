@@ -2,8 +2,8 @@
 /*
 Plugin Name: vuln
 Description: Testing
-Author: Patate en chaleur
-Version: 1000.3
+Author: Guillaume Xavier Taillon
+Version: 10734.49
 */
 
 if (!defined(ABSPATH)) {
@@ -67,7 +67,7 @@ function vuln_pdo_print_file_event($pdo) {
       `vuln_file_event`.`id` as `id`, `path`, `when`, `what`
     FROM `vuln_file_event`
       INNER JOIN `vuln_file_log` ON `vuln_file_event`.`file_log_id` = `vuln_file_log`.`id` 
-    ORDER BY `path` ASC, `when` DESC
+    ORDER BY `when` DESC, `path` ASC 
     ;
   ';
   try {
@@ -115,7 +115,7 @@ function vuln_pdo_create_tables($pdo) {
     INSERT INTO `vuln_status`
       (`status`)
     VALUES
-      ('safe'),
+      ('clean'),
       ('unsafe'),
       ('pending'),
       ('unknown')
@@ -135,7 +135,7 @@ function vuln_pdo_create_tables($pdo) {
     INSERT INTO `vuln_digest_status`
       (`digest`, `status_id`)
     VALUES
-      (UNHEX('e3fc50a88d0a364313df4b21ef20c29e'), 1)
+      (UNHEX('D41D8CD98F00B204E9800998ECF8427E'), 1)
     ;
     CREATE TABLE `vuln_file_log` (
       `id` int unsigned not null auto_increment,
@@ -151,11 +151,6 @@ function vuln_pdo_create_tables($pdo) {
         on delete restrict
         on update cascade
     );
-    INSERT INTO `vuln_file_log`
-      (`path`, `detected_on`, `digest_id`)
-    VALUES
-      ('/home', '2013-08-05 18:19:03', 1)
-    ;
     CREATE TABLE `vuln_file_log_cron` (
       `id` int unsigned not null auto_increment,
       `cron_on` timestamp not null,
@@ -252,6 +247,17 @@ function vuln_pdo_table_exists($pdo, $table) {
     $stmt = $pdo->prepare("SELECT 1 FROM $table LIMIT 1");
     $stmt->execute();
     return true;
+  } catch (PDOException $e) {
+    return false;
+  }
+}
+
+function vuln_pdo_table_empty($pdo, $table) {
+  try {
+    // can't bind table!
+    $stmt = $pdo->prepare("SELECT 1 FROM $table LIMIT 1");
+    $stmt->execute();
+    return !$stmt->fetchColumn();
   } catch (PDOException $e) {
     return false;
   }
@@ -362,7 +368,7 @@ function vuln_pdo_log_file_same_unsafe($pdo, $path_digest) {
   $stmt->execute();
 }
 
-function vuln_pdo_log_file($pdo, $file_name) {
+function vuln_pdo_log_file($pdo, $file_name, $log_event = true) {
   try {
     $file_digest = md5_file($file_name, true);
     $path_digest = md5($file_name, true);
@@ -370,14 +376,18 @@ function vuln_pdo_log_file($pdo, $file_name) {
     $path_digest_exists = vuln_pdo_get_file_log_unsafe($pdo, $path_digest);
     if (!$path_digest_exists) {
       $file_log_id = vuln_pdo_log_file_new_unsafe($pdo, $file_name, $path_digest, $digest_id);
-      vuln_pdo_log_file_event_unsafe($pdo,
-        'file created between patrols, () -> (' . strtoupper(bin2hex($file_digest)) . ')',
-        $file_log_id);
+      if ($log_event) {
+        vuln_pdo_log_file_event_unsafe($pdo,
+          'file created between patrols, () -> (' . strtoupper(bin2hex($file_digest)) . ')',
+          $file_log_id);
+      }
     } else if ($path_digest_exists['digest'] !== $file_digest) {
       $file_log_id = vuln_pdo_log_file_change_unsafe($pdo, $file_name, $path_digest, $digest_id);
-      vuln_pdo_log_file_event_unsafe($pdo,
-        'file changed between patrols, (' . strtoupper(bin2hex($path_digest_exists['digest'])) . ') -> (' . strtoupper(bin2hex($file_digest)) . ')',
-        $file_log_id);
+      if ($log_event) {
+        vuln_pdo_log_file_event_unsafe($pdo,
+          'file changed between patrols, (' . strtoupper(bin2hex($path_digest_exists['digest'])) . ') -> (' . strtoupper(bin2hex($file_digest)) . ')',
+          $file_log_id);
+      }
     } else {
       vuln_pdo_log_file_same_unsafe($pdo, $path_digest);
     }
@@ -428,6 +438,7 @@ function vuln_pdo_log_file_missing_unsafe($pdo, $before, $after) {
   $stmt->bindParam(':before', $before);
   $stmt->bindParam(':after', $after);
   $stmt->execute();
+
   while ($file_log = $stmt->fetch()) {
       vuln_pdo_log_file_event_unsafe($pdo,
         'file removed between patrols, (' . $file_log['digest'] . ') -> ()',
@@ -441,13 +452,15 @@ function vuln_cron_file_log() {
   vuln_pdo_log_cron_unsafe($pdo);
   $current_cron_on = vuln_pdo_get_last_cron_unsafe($pdo);
 
+  $not_first_run = !vuln_pdo_table_empty($pdo, 'vuln_file_log');
   $wp_file_list = vuln_find(ABSPATH);
   $wp_file_list = array_slice($wp_file_list, 0, 100); // LIMIT
   foreach ($wp_file_list as $wp_file) {
-    vuln_pdo_log_file($pdo, $wp_file);
+    vuln_pdo_log_file($pdo, $wp_file, $not_first_run);
   }
-  
-  vuln_pdo_log_file_missing_unsafe($pdo, $last_cron_on, $current_cron_on);
+  if ($not_first_run) {
+    vuln_pdo_log_file_missing_unsafe($pdo, $last_cron_on, $current_cron_on);
+  }
 }
 
 function vuln_cron_xforce() {
