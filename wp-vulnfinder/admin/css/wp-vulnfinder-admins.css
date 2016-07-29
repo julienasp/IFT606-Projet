@@ -1,0 +1,238 @@
+/************************
+Css orignal http://codepen.io/jlalovi/details/bIyAr
+************************/
+@import url(http://fonts.googleapis.com/css?family=Ubuntu:400,700);
+* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;  
+}
+body, html {
+	
+	background: #1f253d;
+}
+
+#txt_title{
+	text-align:center;
+	size:40px;
+	text-decoration: underline;
+}
+ul {
+	list-style-type: none;
+	margin: 0;
+	padding-left: 0;
+}
+
+h1 {
+	font-size: 23px;
+}
+
+h2 {
+	font-size: 17px;
+}
+
+p {
+	font-size: 15px;
+}
+
+a {
+	text-decoration: none;
+	font-size: 15px;
+}
+	a:hover {
+		text-decoration: underline;
+	}
+	
+	
+
+h1, h2, p, a, span{
+	color: #fff;
+}
+
+#txt_title {
+			
+			
+	position:center;
+	
+}
+
+
+		
+.wp_vul { 
+
+color: #333;
+font-family: Helvetica, Arial, sans-serif;
+width: 100%; 
+margin-right:70px;
+}
+
+.table { 
+float:left;
+margin-top:50px;
+font-family: Helvetica, Arial, sans-serif;
+width: 100%;  
+}	
+
+.pl_vul { 
+
+margin-right:70px;
+color: #333;
+font-family: Helvetica, Arial, sans-serif;
+width: 100%;
+}
+
+
+td, th { 
+border: 1px solid transparent; /* No more visible border */
+height: 30px; 
+transition: all 0.3s;  /* Simple transition for hover effect */
+}
+
+th {
+background: #DFDFDF;  /* Darken header a bit */
+font-weight: bold;
+}
+
+td {
+background: #FAFAFA;
+text-align: center;
+}
+
+/* Cells in even rows (2,4,6...) are one color */ 
+tr:nth-child(even) td { background: #F1F1F1; }   
+
+/* Cells in odd rows (1,3,5...) are another (excludes header cells)  */ 
+tr:nth-child(odd) td { background: #FEFEFE; }  
+
+tr td:hover { background: #666; color: #FFF; } /* Hover cell effect! */
+
+	
+.block {
+	display: inline;
+	margin: 25px 0 0 0;
+	background: #394264;
+	border-radius: 5px;
+	float: right;
+	width: 90%;
+	overflow: hidden;
+	height: auto;
+	
+	}
+	
+	#tables {
+		
+	display: inline;
+	margin: 25px 70px 0 0;
+	background: #394264;
+	border-radius: 5px;
+	float: right;
+	width: 90%;
+	overflow: hidden;
+	height: auto;
+	
+	}
+
+ .bar-chart-block {
+	 display: inline;
+	float:right;
+	margin-top:50px;
+	margin-right:70px;
+	height: 600px;
+}
+				
+
+/******************************************
+↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
+ESTILOS PROPIOS DE LOS GRÄFICOS
+↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
+GRAFICO LINEAL
+******************************************/
+
+[class^='eje-'] {
+  position: absolute;
+  left: 0;
+  bottom: 0rem;
+  width: 100%;
+  padding: 1rem 1rem 0 2rem;
+  height: 80%;
+}
+.eje-x {
+  height: 1rem;
+}
+
+.eje-y li {
+  height: 25%;
+  border-top: 1px solid #777;
+}
+[data-ejeY]:before {
+  content: attr(data-ejeY);
+  display: inline-block;
+  width: 2rem;
+  text-align: right;
+  line-height: 0;
+  position: relative;
+  left: -2.5rem;
+  top: -.5rem;
+} 
+.eje-x li {
+	
+  width: 33%;
+  float: left;
+  text-align: center;
+}
+
+
+/**************************
+BAR-CHART
+**************************/
+.grafico.bar-chart {
+  background: #3468AF;
+  padding: 0 1rem 2rem 1rem;
+  width: 100%;
+  height: 40%;
+  position: relative;
+  color: #fff;
+  font-size: 80%;
+  
+}
+.bar-chart [class^='eje-'] {
+  padding: 0 1rem 0 2rem;
+  bottom: 1rem;
+  
+}
+.bar-chart .eje-x {
+	bottom: 0;
+   margin-bottom:20px;
+}
+ .bar-chart .eje-y li {
+  height: 20%;
+  border-top: 1px solid #fff;
+}
+.bar-chart .eje-x li {
+  width: 14%;
+  margin-left:10px;
+  margin-right:10px;
+  position: relative;
+  text-align: left;
+ 
+}
+.bar-chart .eje-x li i {
+  font-size:10px;
+  text-decoration:bold;
+  transform-origin: 30% 60%;
+  display: block;
+}
+.bar-chart .eje-x li:before {
+  content: '';
+  position: absolute;
+  bottom: 0rem;
+  width: 70%;
+  right: 5%;
+  box-shadow: 3px 0 rgba(0,0,0,.1), 3px -3px rgba(0,0,0,.1);
+}
+
+/*****************************
+USO NÚMEROS MÁGICOS EN ALGUNOS VALORES
+POR NO PARARME A ESTUDIAR A FONDO
+EL CSS DEL PEN ORIGINAL
+*****************************/
